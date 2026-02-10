@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>QuickCalc v3.3 – TP / TQ depuis INR</title>
+
+<style>
+body {
+    font-family: Segoe UI, Tahoma, sans-serif;
+    background: #121212;
+    color: #e0e0e0;
+    margin: 0;
+}
+header {
+    background: #0d47a1;
+    color: white;
+    padding: 15px;
+    text-align: center;
+    font-size: 2em;
+}
+header small {
+    display: block;
+    font-size: 0.6em;
+    color: #cfd8dc;
+}
+.container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 20px;
+    justify-content: center;
+}
+.box {
+    background: #0d47a1;
+    padding: 25px;
+    border-radius: 12px;
+    min-width: 320px;
+    box-shadow: 0 0 15px rgba(33,150,243,0.4);
+}
+h2 { color: #bbdefb; text-align: center; }
+label { color: #e3f2fd; }
+
+input, button, table {
+    width: 100%;
+    font-size: 1em;
+}
+
+input {
+    padding: 10px;
+    margin-bottom: 12px;
+    background: #102a43;
+    border: 1px solid #64b5f6;
+    border-radius: 8px;
+    color: white;
+}
+
+button {
+    background: #2196f3;
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 6px;
+}
+button:hover { background: #64b5f6; color: black; }
+
+table {
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+th, td {
+    border: 1px solid #333;
+    padding: 8px;
+    text-align: center;
+}
+th { background: #1565c0; }
+td { background: #102a43; cursor: pointer; }
+
+.result-cell {
+    display: inline-block;
+    width: 160px;
+    height: 80px;
+    line-height: 80px;
+    margin: 5px;
+    border-radius: 8px;
+    font-size: 1.2em;
+    font-weight: bold;
+    color: white;
+    background: #1976d2;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+QuickCalc v3.3
+<small>Developed by Fares</small>
+</header>
+
+<div class="container">
+
+<!-- CALCUL -->
+<div class="box">
+<h2>Calcul</h2>
+
+<label>INR</label>
+<input type="number" id="inr" step="0.01" oninput="calculer()">
+
+<div>
+    <div id="tqCell" class="result-cell">TQ</div>
+    <div id="tpCell" class="result-cell">TP</div>
+</div>
+</div>
+
+<!-- PARAMÈTRES -->
+<div class="box">
+<h2>Paramètres</h2>
+
+<label>TQ témoin (s)</label>
+<input type="number" id="tqTemoin" step="0.1">
+
+<label>ISI</label>
+<input type="number" id="isi" step="0.01">
+
+<label>Droite de Thivolle</label>
+<table id="pointsTable">
+<thead>
+<tr><th>TP (%)</th><th>TQ (s)</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<button onclick="saveAll()">💾 Sauvegarder paramètres</button>
+<button onclick="resetAll()">🔄 Réinitialiser paramètres</button>
+</div>
+
+</div>
+
+<script>
+/* === VALEURS INITIALES OFFICIELLES === */
+const defaults = {
+    tqTemoin: 13,
+    isi: 1.56,
+    table: [
+        {tp:100, tq:13}, {tp:66.7, tq:18.5}, {tp:50, tq:26},
+        {tp:40, tq:32.5}, {tp:33, tq:38}, {tp:28.6, tq:45.5},
+        {tp:25, tq:52}, {tp:22.2, tq:58.5}, {tp:20, tq:65},
+        {tp:18.8, tq:73}, {tp:16, tq:81}
+    ]
+};
+
+/* === REMPLIR TABLE === */
+function fillTable(data) {
+    const tbody = document.querySelector("#pointsTable tbody");
+    tbody.innerHTML = "";
+    data.forEach(p => {
+        tbody.innerHTML += `
+        <tr>
+            <td contenteditable>${p.tp}</td>
+            <td contenteditable>${p.tq}</td>
+        </tr>`;
+    });
+}
+
+/* === SAUVEGARDE TOTALE === */
+function saveAll() {
+    const table = [...document.querySelectorAll("#pointsTable tbody tr")]
+        .map(r => ({
+            tp: r.cells[0].innerText,
+            tq: r.cells[1].innerText
+        }));
+
+    const data = {
+        tqTemoin: tqTemoin.value,
+        isi: isi.value,
+        table
+    };
+
+    localStorage.setItem("quickcalc_all", JSON.stringify(data));
+    alert("Paramètres sauvegardés ✔");
+}
+
+/* === RÉINITIALISATION TOTALE === */
+function resetAll() {
+    if (!confirm("Réinitialiser tous les paramètres ?")) return;
+    localStorage.removeItem("quickcalc_all");
+    loadDefaults();
+}
+
+/* === CHARGEMENT === */
+function loadDefaults() {
+    tqTemoin.value = defaults.tqTemoin;
+    isi.value = defaults.isi;
+    fillTable(defaults.table);
+}
+
+function loadSaved() {
+    const saved = localStorage.getItem("quickcalc_all");
+    if (!saved) {
+        loadDefaults();
+        return;
+    }
+    const d = JSON.parse(saved);
+    tqTemoin.value = d.tqTemoin;
+    isi.value = d.isi;
+    fillTable(d.table);
+}
+
+/* === CALCUL === */
+function getPoints() {
+    return [...document.querySelectorAll("#pointsTable tbody tr")]
+        .map(r => ({
+            tp: parseFloat(r.cells[0].innerText),
+            tq: parseFloat(r.cells[1].innerText)
+        }))
+        .filter(p => !isNaN(p.tp) && !isNaN(p.tq))
+        .sort((a,b) => a.tq - b.tq);
+}
+
+function calculer() {
+    const inr = parseFloat(inrInput.value);
+    if (isNaN(inr) || inr <= 0) return;
+
+    const tqPatient = tqTemoin.value * Math.pow(inr, 1 / isi.value);
+    const data = getPoints();
+    let tp = null;
+
+    for (let i = 0; i < data.length - 1; i++) {
+        if (tqPatient >= data[i].tq && tqPatient <= data[i+1].tq) {
+            const r = (tqPatient - data[i].tq) /
+                      (data[i+1].tq - data[i].tq);
+            tp = Math.pow(10,
+                Math.log10(data[i].tp) +
+                r * (Math.log10(data[i+1].tp) - Math.log10(data[i].tp))
+            );
+            break;
+        }
+    }
+
+    tqCell.textContent = `TQ : ${tqPatient.toFixed(2)} s`;
+    tpCell.textContent = tp ? `TP : ${tp.toFixed(1)} %` : "TP : Hors plage";
+}
+
+/* INIT */
+const inrInput = document.getElementById("inr");
+const tqTemoin = document.getElementById("tqTemoin");
+const isi = document.getElementById("isi");
+const tqCell = document.getElementById("tqCell");
+const tpCell = document.getElementById("tpCell");
+
+window.addEventListener("load", loadSaved);
+</script>
+
+</body>
+</html>
